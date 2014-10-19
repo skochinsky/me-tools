@@ -98,3 +98,6 @@ $RECYCLE.BIN/
 *.msi
 *.msm
 *.msp
+
+# Windows binaries
+*.exe
