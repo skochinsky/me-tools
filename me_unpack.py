@@ -115,7 +115,7 @@ class MeModuleHeader1(ctypes.LittleEndianStructure):
         base = self.ModBase
         codestart = base
         codeend = base + self.CodeSize
-        dataend = base + self.TotalSize
+        dataend = base + self.MemorySize
         curoff = base
         if codestart:
             if curoff < codestart:
@@ -184,8 +184,8 @@ class MeModuleHeader2(ctypes.LittleEndianStructure):
         ("Offset",         uint32_t),   # 0x38 From the start of manifest
         ("CodeSize",       uint32_t),   # 0x3C
         ("Size",           uint32_t),   # 0x40
-        ("TotalSize",      uint32_t),   # 0x44
-        ("TotalSize2",     uint32_t),   # 0x48
+        ("MemorySize",     uint32_t),   # 0x44
+        ("PreUmaSize",     uint32_t),   # 0x48
         ("EntryPoint",     uint32_t),   # 0x4C
         ("Flags",          uint32_t),   # 0x50
         ("Unk54",          uint32_t),   #
@@ -230,8 +230,8 @@ class MeModuleHeader2(ctypes.LittleEndianStructure):
         print "Offset:         0x%08X" % (self.Offset)
         print "Code size:      0x%08X" % (self.CodeSize)
         print "Data length:    0x%08X" % (self.Size)
-        print "Total size?:    0x%08X" % (self.TotalSize)
-        print "Total size 2?:  0x%08X" % (self.TotalSize2)
+        print "Memory size:    0x%08X" % (self.MemorySize)
+        print "Pre-UMA size:   0x%08X" % (self.PreUmaSize)
         print "Entry point:    0x%08X" % (self.EntryPoint)
         print "Flags:          0x%08X" % (self.Flags)
         self.print_flags()
@@ -246,7 +246,7 @@ class MeModuleHeader2(ctypes.LittleEndianStructure):
         rapi2 = ((self.Flags>>20)&3)
         codestart = base + (rapi1+rapi2) * 0x1000
         codeend = base + self.CodeSize
-        dataend = base + self.TotalSize
+        dataend = base + self.MemorySize
         curoff = base
         if rapi1:
             rapi1end = curoff + rapi1 * 0x1000
@@ -256,7 +256,7 @@ class MeModuleHeader2(ctypes.LittleEndianStructure):
             rapi2end = curoff + rapi2 * 0x1000
             print "%08X %08X  %s KAPI" % (curoff, rapi2end, nm)
             curoff = rapi2end
-        if self.TotalSize2 == 0:
+        if self.PreUmaSize == 0:
             codestart = base
         if codestart:
             if curoff < codestart:
@@ -435,8 +435,8 @@ class MeManifestHeader(ctypes.LittleEndianStructure):
             mod.UncompressedSize = mfhdr.UncompressedSize
             mod.ModBase = mfhdr.LoadAddress
             mod.CodeSize = mfhdr.UncompressedSize
-            mod.TotalSize = mfhdr.MappedSize
-            mod.TotalSize2 = mod.TotalSize
+            mod.MemorySize = mfhdr.MappedSize
+            mod.PreUmaSize = mod.MemorySize
             mod.EntryPoint = mod.ModBase + mfhdr.EntryRVA
             offset += mod.Size
 
@@ -1046,7 +1046,7 @@ def load_mod(mod, data):
         rapi2 = ((mod.Flags>>20)&3)
         codestart = base + (rapi1+rapi2) * 0x1000
         codeend = base + mod.CodeSize
-        dataend = base + mod.TotalSize
+        dataend = base + mod.MemorySize
         entry   = mod.EntryPoint
     else:
         base = mod.LoadAddress
@@ -1067,7 +1067,7 @@ def load_mod(mod, data):
         print "%08X %08X  %s KAPI" % (curoff, rapi2end, nm)
         myAddSeg(curoff, rapi2end, nm + ".KAPI", "CODE")
         curoff = rapi2end
-    if mod.TotalSize2 == 0:
+    if mod.PreUmaSize == 0:
         codestart = base
     if codestart:
         if curoff < codestart:
