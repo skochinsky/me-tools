@@ -846,7 +846,6 @@ def get_huff_range(f, offset):
             continue
         if mod.comptype() == COMP_TYPE_HUFFMAN:
             has_huff = True
-            modstarts.append(huff_start + mod.Size)
         else:
             modstarts.append(mod.Offset)
             # print "ms %08X" % mod.Offset
@@ -959,8 +958,8 @@ def dump_glut(f, me_offset, extract):
         os.chdir("..")
 
 def dump_glut_upd(f, me_offset, extract):
-    manif = get_struct(f, offset, MeManifestHeader)
-    manif.parse_mods(f, offset)
+    manif = get_struct(f, me_offset, MeManifestHeader)
+    manif.parse_mods(f, me_offset)
     if len(manif.updparts) != 3:
         return
     for subtag, soff, subsize in manif.updparts:
