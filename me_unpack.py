@@ -881,13 +881,18 @@ def dump_lut(f, me_offset, lut_offset, range_ends, extract, ftpr_range = None, n
             i = 0
             while tbl2[i][0] == 0:
               i += 1
-            print "titem %d = %08X, ftpr start = %08X" % (i, tbl2[i][0], ftpr_range[0])
+            ftpr_off = ftpr_range[2]
+            print "titem %d = %08X, ftpr huff start = %08X" % (i, tbl2[i][0], ftpr_range[0])
             print "ftpr partition start = %08X" % (tbl2[i][0] - ftpr_range[0])
-            print "upd ftpr start = %08X" % (ftpr_range[2])
-            delta = ftpr_range[2] - (tbl2[i][0] - ftpr_range[0])
-            print "delta = %X, new ftpr end = %X" % (delta, ftpr_range[1] - delta)
-            tbl2.append((ftpr_range[1] - delta, 0))
+            print "upd ftpr start = %08X" % (ftpr_off)
+            delta = -(tbl2[i][0] - ftpr_range[0])
+            huff_end = nftp_range[1] - delta + nftp_range[2]
+            print "delta = %X, huff end offset = %X" % (delta, huff_end)
+            tbl2.append((huff_end - ftpr_off, 0))
+            delta += ftpr_off
+            print "delta2 = %X" % (delta)
         else:
+            delta = 0
             for h in range_ends:
                 tbl2.add((h, 0))
             tbl2 = sorted(tbl2)
@@ -897,7 +902,9 @@ def dump_lut(f, me_offset, lut_offset, range_ends, extract, ftpr_range = None, n
             if titem in range_ends:
                 continue
             itlen = tbl2[i+1][0] - titem
-            cdata = f[me_offset+titem:me_offset+titem+itlen]
+            file_off = me_offset+titem+delta
+            # print " => file offset %08X" % file_off
+            cdata = f[file_off:file_off+itlen]
             vaddr = tbl3[titem]
             print "%04X: %08X (vaddr=%08x, len=%08X, comp=%02X)" % (i, titem, vaddr, itlen, fl)
             if fl != 0x80 and extract:
