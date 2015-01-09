@@ -854,7 +854,10 @@ def get_huff_range(f, offset):
     if not has_huff:
         return
 
-    huff_end = min(modstarts)
+    if modstarts:
+        huff_end = min(modstarts)
+    else:
+        huff_end = huff_start + hdr.HuffLength
     return huff_start, huff_end
 
 def dump_lut(f, me_offset, lut_offset, range_ends, extract, ftpr_range = None, nftp_range = None):
