@@ -279,7 +279,11 @@ def extract_code_mods(nm, f, soff):
        pass
     os.chdir(nm)
     print " extracting CODE partition %s" % (nm)
-    manif = get_struct(f, soff, MeManifestHeader)
+    if f[soff:soff+4]=='$CPD':
+     s= CPDHeader
+    else:
+     s= MeManifestHeader
+    manif = get_struct(f, soff, s)
     manif.parse_mods(f, soff)
     manif.pprint()
     manif.extract(f, soff)
@@ -368,6 +372,10 @@ class MeManifestHeader(ctypes.LittleEndianStructure):
             udc_fmt = "<4s20s16sII"
             udc_len = 0x30
         else:
+            print ("Don't know how to parse modules for manifest tag %s!" % self.Tag)
+            self.huff_start =0
+            self.huff_end =0
+            return
             raise Exception("Don't know how to parse modules for manifest tag %s!" % self.Tag)
 
         modmap = {}
@@ -527,7 +535,8 @@ class MeManifestHeader(ctypes.LittleEndianStructure):
                 data, ext = r
                 if ext == "huff" and nhuffs != 1:
                     nm = self.PartitionName
-                fname = "%s_mod.%s" % (nm, ext)
+                if ext!= "bin":
+                   fname = "%s_mod.%s" % (nm, ext)
                 print " => %s" % (fname)
                 open(fname, "wb").write(data)
 
@@ -557,6 +566,259 @@ class MeManifestHeader(ctypes.LittleEndianStructure):
         print "RSA Public Key:      [skipped]"
         print "RSA Public Exponent: %d" % (self.RsaPubExp)
         print "RSA Signature:       [skipped]"
+        pname = self.PartitionName.rstrip('\0')
+        if not pname:
+            pname = "(none)"
+        print "Partition name:      %s" % (pname)
+        print "---Modules---"
+        for mod in self.modules:
+            mod.pprint()
+            print
+        print "------End-------"
+
+
+class CPDEntry(ctypes.LittleEndianStructure):
+    _fields_ = [
+        ("Name",           char*12),  # 00 
+        ("Offset",         uint32_t), # 04
+        ("Size",         uint32_t), # 08
+        ("Flags",          uint32_t), #0C
+        # 10
+    ]
+    def comptype(self):
+        nm = self.Name.rstrip('\0')
+        typ = self.Offset>>24
+        if nm[-4:-3]=='.': return COMP_TYPE_NOT_COMPRESSED
+        if typ==2: return COMP_TYPE_HUFFMAN
+        elif typ==0: return COMP_TYPE_LZMA
+        else:  return COMP_TYPE_NOT_COMPRESSED
+
+    def pprint(self):
+        nm = self.Name.rstrip('\0')
+        print "Module name:    %s" % (nm)
+        typ = self.Offset>>28
+        print "Offset: %08X" % (self.Offset & 0xFFFFFF)
+        print "Size: %08X" % (self.Size)
+        print "comp type:%d" %self.comptype()
+        print "Flags: %08X"% (self.Flags)
+
+
+class CPDHeader(ctypes.LittleEndianStructure):
+    _fields_ = [
+        ("Tag",            char*4),   # 00 $CPD
+        ("NumModules",     uint32_t), # 04
+        ("Flags",          uint32_t), # 08
+        ("PartitionName",  char*4),    #0C
+        # 10
+    ]
+
+    def parse_mods(self, f, offset):
+        self.modules = []
+        self.updparts = []
+        orig_off = offset
+        offset += 0x10
+        if self.Tag == '$MN2':
+            self.cpu = "ARCompact"
+            htype = MeModuleHeader2
+            hdrlen = ctypes.sizeof(htype)
+            udc_fmt = "<4s32s16sII"
+            udc_len = 0x3C
+        elif self.Tag == '$MAN':
+            self.cpu = "ARC"
+            htype = MeModuleHeader1
+            hdrlen = ctypes.sizeof(htype)
+            udc_fmt = "<4s20s16sII"
+            udc_len = 0x30
+        elif self.Tag == '$CPD':
+            self.cpu = "metapc"
+            htype = CPDEntry
+            hdrlen = ctypes.sizeof(htype)
+            udc_fmt = "<4s20s16sII"
+            udc_len = 0x30
+        else:
+            print ("Don't know how to parse modules for manifest tag %r!" % self.Tag)
+            self.huff_start =0
+            self.huff_end =0
+            return
+            raise Exception("Don't know how to parse modules for manifest tag %s!" % self.Tag)
+
+        modmap = {}
+        self.huff_start = 0
+        for i in range(self.NumModules):
+            mod = get_struct(f, offset, htype)
+            nm = mod.Name.rstrip('\0')
+            modmap[nm] = mod
+            self.modules.append(mod)
+            if mod.comptype() == COMP_TYPE_HUFFMAN:
+                if self.huff_start and self.huff_start != mod.Offset:
+                    print "Warning: inconsistent start offset for Huffman modules!"
+                self.huff_start = mod.Offset
+            offset += hdrlen
+
+        self.partition_end = None
+        hdr_end = offset
+        while offset < hdr_end:
+            # print "tags %08X" % offset
+            hdr = f[offset:offset+8]
+            if hdr == '\xFF' * 8:
+                offset += hdrlen
+                continue
+            if len(hdr) < 8 or hdr[0] != '$':
+                break
+            tag, elen = hdr[:4], struct.unpack("<I", hdr[4:])[0]
+            if elen == 0:
+                break
+            print "Tag: %s, data length: %08X (0x%08X bytes)" % (tag, elen, elen*4)
+            if tag == '$UDC':
+                subtag, hash, subname, suboff, size = struct.unpack(udc_fmt, f[offset+8:offset+8+udc_len])
+                suboff += offset
+                print "Update code part: %s, %s, offset %08X, size %08X" % (subtag, subname.rstrip('\0'), suboff, size)
+                self.updparts.append((subtag, suboff, size))
+            elif tag == '$GLT':
+                suboff, size = struct.unpack("<II", f[offset+8:offset+16])
+                print "GLUT part: offset +%08X, size %08X" % (suboff, size)
+                self.updparts.append(('GLUT', offset+suboff, size))
+            elif elen == 3:
+                val = struct.unpack("<I", f[offset+8:offset+12])[0]
+                print "%s: %08X" % (tag[1:], val)
+            elif elen == 4:
+                vals = struct.unpack("<II", f[offset+8:offset+16])
+                print "%s: %08X %08X" % (tag[1:], vals[0], vals[1])
+            else:
+                vals = array.array("I", f[offset+8:offset+elen*4])
+                print "%s: %s" % (tag[1:], " ".join("%08X" % v for v in vals))
+                if tag == '$MCP':
+                    self.partition_end = vals[0] + vals[1]
+            offset += elen*4
+
+        offset = hdr_end
+        while True:
+            print "mods %08X" % offset
+            if f[offset:offset+4] != '$MOD':
+                break
+            mfhdr = get_struct(f, offset, MeModuleFileHeader1)
+            mfhdr.pprint()
+            nm = mfhdr.Name.rstrip('\0')
+            mod = modmap[nm]
+            # copy some fields needed by other code
+            mod.Offset = offset - orig_off
+            mod.UncompressedSize = mfhdr.UncompressedSize
+            mod.ModBase = mfhdr.LoadAddress
+            mod.CodeSize = mfhdr.UncompressedSize
+            mod.MemorySize = mfhdr.MappedSize
+            mod.PreUmaSize = mod.MemorySize
+            mod.EntryPoint = mod.ModBase + mfhdr.EntryRVA
+            offset += mod.Size
+
+        # check for huffman LUT
+        offset = self.huff_start
+        if f[offset+1:offset+4] == 'LUT':
+            cnt, unk8, unkc, complen = struct.unpack("<IIII", f[offset+4:offset+20])
+            self.huff_end = offset + 0x40 + 4*cnt + complen
+        else:
+            self.huff_start = 0xFFFFFFFF
+            self.huff_end = 0xFFFFFFFF
+
+    def print_mods(self):
+        pname = self.PartitionName.rstrip('\0')
+        print "------%s------" % pname
+        for i, mod in enumerate(self.modules):
+            if i: print "--"
+            mod.print_map()
+        print "------End-------\n"
+        for subtag, soff, subsize in self.updparts:
+            if subtag != 'GLUT':
+                manif = get_struct(f, soff, MeManifestHeader)
+                manif.parse_mods(f, soff)
+                manif.print_mods()
+
+    def _get_mod_data(self, f, offset, imod):
+        huff_end = self.huff_end
+        nhuffs = 0
+        for mod in self.modules:
+            if mod.comptype() != COMP_TYPE_HUFFMAN:
+                huff_end = min(huff_end, mod.Offset)
+            else:
+                nhuffs += 1
+        mod = self.modules[imod]
+        nm = mod.Name.rstrip('\0')
+        islast = (imod == len(self.modules)-1)
+        if mod.Offset in [0xFFFFFFFF, 0] or (mod.Size in [0xFFFFFFFF, 0] and not islast and mod.comptype() != COMP_TYPE_HUFFMAN):
+            return None
+        else:
+            if self.Tag == '$CPD':
+              soff = offset + mod.Offset & 0xFFFFFF
+            else:            
+              soff = offset + mod.Offset
+            size = mod.Size
+            data = f[soff:soff+size]
+            if mod.comptype() == COMP_TYPE_LZMA and nm[-4:-3] !='.':
+                ext = "lzma"
+                if data.startswith("\x36\x00\x40\x00\x00") and data[0xE:0x11] == '\x00\x00\x00':
+                    # delete the extra zeroes so the stream can be decompressed
+                    data = data[:0xE] + data[0x11:]
+                ud = decomp_lzma(data)
+                if ud:
+                    data = ud
+                    ext = "bin"
+            elif mod.comptype() == COMP_TYPE_HUFFMAN:
+                ext = "huff"
+                if nhuffs != 1:
+                    nm = self.PartitionName
+                size = huff_end - mod.Offset
+            else:
+                ext = "bin"
+            if self.Tag == '$MAN':
+                ext = "mod"
+                moff = soff+0x50
+                if f[moff:moff+5] == '\x5D\x00\x00\x80\x00':
+                    data = f[moff:moff+5] + struct.pack("<Q", mod.UncompressedSize) + f[moff+5:moff+mod.Size-0x50]
+                    # file("%s_comp.lzma" % nm, "wb").write(data)
+                    ud = decomp_lzma(data)
+                    if ud:
+                        data = f[soff:soff+0x50] + ud
+                        ext = "bin"
+            return (data, ext)
+
+    def extract(self, f, offset):
+        huff_end = self.huff_end
+        nhuffs = 0
+        for mod in self.modules:
+            if mod.comptype() != COMP_TYPE_HUFFMAN:
+                huff_end = min(huff_end, mod.Offset)
+            else:
+                print "Huffman module:      %r %08X/%08X" % (mod.Name.rstrip('\0'), mod.ModBase, mod.CodeSize)
+                nhuffs += 1
+        for imod, mod in enumerate(self.modules):
+            mod = self.modules[imod]
+            nm = mod.Name.rstrip('\0')
+            islast = (imod == len(self.modules)-1)
+            # print "Module:      %r %08X/%08X" % (nm, mod.ModBase, mod.CodeSize),
+            print "Module:      %r" % (nm),
+            r = self._get_mod_data(f, offset, imod)
+            if r:
+                data, ext = r
+                if ext == "huff" and nhuffs != 1:
+                    nm = self.PartitionName
+                if ext != "bin":
+                   fname = "%s_mod.%s" % (nm, ext)
+                else:
+                   fname = nm
+                print " => %s" % (fname)
+                open(fname, "wb").write(data)
+
+        for subtag, soff, subsize in self.updparts:
+            fname = "%s_udc.bin" % subtag
+            print "Update part: %r %08X/%08X" % (subtag, soff, subsize),
+            print " => %s" % (fname)
+            open(fname, "wb").write(f[soff:soff+subsize])
+            if subtag != 'GLUT':
+                extract_code_mods(subtag, f, soff)
+
+    def pprint(self):
+        print "Tag:                 %s" % (self.Tag)
+        print "Number of modules:   %d" % (self.NumModules)
+        print "Flagson:             %08X" % (self.Flags)
         pname = self.PartitionName.rstrip('\0')
         if not pname:
             pname = "(none)"
