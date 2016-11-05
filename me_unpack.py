@@ -537,6 +537,8 @@ class MeManifestHeader(ctypes.LittleEndianStructure):
                     nm = self.PartitionName
                 if ext!= "bin":
                    fname = "%s_mod.%s" % (nm, ext)
+                else:
+                   fname = nm
                 print " => %s" % (fname)
                 open(fname, "wb").write(data)
 
@@ -588,6 +590,8 @@ class CPDEntry(ctypes.LittleEndianStructure):
     def comptype(self):
         nm = self.Name.rstrip('\0')
         typ = self.Offset>>24
+        self.ModBase =0
+        self.CodeSize =0
         if nm[-4:-3]=='.': return COMP_TYPE_NOT_COMPRESSED
         if typ==2: return COMP_TYPE_HUFFMAN
         elif typ==0: return COMP_TYPE_LZMA
@@ -607,7 +611,7 @@ class CPDEntry(ctypes.LittleEndianStructure):
 class CPDHeader(ctypes.LittleEndianStructure):
     _fields_ = [
         ("Tag",         char*4),   # 00 $CPD
-        ("Entries",     uint32_t), # 04
+        ("NumModules",   uint32_t), # 04
         ("HeaderVersion",uint8_t), # 08
         ("EntryVersion", uint8_t), # 09
         ("HeaderLength", uint8_t), # 0A
@@ -991,6 +995,7 @@ def parse_descr(f, offset, extract):
     print "FRBA: 0x%08X" % frba
     print "FCBA: 0x%08X" % fcba
     me_offset = -1
+    if nr<2: nr=2 #assume ME region exists
     for i in range(nr+1):
         FLREG = struct.unpack("<I", f[offset + frba + i*4:offset + frba + i*4 + 4])[0]
         r = print_flreg(FLREG, region_names[i])
