@@ -1,4 +1,4 @@
-# Intel ME ROM image dumper/extractor
+﻿# Intel ME ROM image dumper/extractor
 # Copyright (c) 2012-2014 Igor Skochinsky
 # Version 0.1 2012-10-10
 # Version 0.2 2013-08-15
@@ -598,6 +598,7 @@ class CPDEntry(ctypes.LittleEndianStructure):
         print "Module name:    %s" % (nm)
         typ = self.Offset>>28
         print "Offset: %08X" % (self.Offset & 0xFFFFFF)
+        print "Compress flag: %08X" % ((self.Offset >>25) &1)
         print "Size: %08X" % (self.Size)
         print "comp type:%d" %self.comptype()
         print "Flags: %08X"% (self.Flags)
@@ -605,10 +606,13 @@ class CPDEntry(ctypes.LittleEndianStructure):
 
 class CPDHeader(ctypes.LittleEndianStructure):
     _fields_ = [
-        ("Tag",            char*4),   # 00 $CPD
-        ("NumModules",     uint32_t), # 04
-        ("Flags",          uint32_t), # 08
-        ("PartitionName",  char*4),    #0C
+        ("Tag",         char*4),   # 00 $CPD
+        ("Entries",     uint32_t), # 04
+        ("HeaderVersion",uint8_t), # 08
+        ("EntryVersion", uint8_t), # 09
+        ("HeaderLength", uint8_t), # 0A
+        ("Checksum",     uint8_t), # 0B
+        ("PartitionName", char*4),    #0C
         # 10
     ]
 
@@ -818,7 +822,10 @@ class CPDHeader(ctypes.LittleEndianStructure):
     def pprint(self):
         print "Tag:                 %s" % (self.Tag)
         print "Number of modules:   %d" % (self.NumModules)
-        print "Flagson:             %08X" % (self.Flags)
+        print "Header Version:     %0X" % (self.HeaderVersion)
+        print "Entry Version:     %02X" % (self.EntryVersion)
+        print "Header Length:     %02X" % (self.HeaderLength)
+        print "Checksum:         %02X" % (self.Checksum)
         pname = self.PartitionName.rstrip('\0')
         if not pname:
             pname = "(none)"
