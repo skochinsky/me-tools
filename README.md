@@ -50,3 +50,14 @@ me_util.py
 
 This script allows you to send HECI (MEI) messages to the ME. The script currently runs only under Windows and
 requires the ME drivers to be installed. You need to run it with admin privileges as it needs access to the driver.
+
+me_sigcheck.py
+========
+This script checks the validity of an ME partition's manifest using the embedded RSA public key and signature.
+
+  E.g. Check the signature of the FTPR partition (possibly extracted by me_unpack.py):
+
+  me_sigcheck.py FTPR_part.bin
+
+  Note: currently the padding of the signature is not checked by the script but it *is* checked by the ME.
+
