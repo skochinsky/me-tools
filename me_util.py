@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # based on http://lpaste.net/96724
 # utility to send HECI(MEI) messages to Intel ME
 # Copyright (c) 2012-2014 Igor Skochinsky

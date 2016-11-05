@@ -1,4 +1,6 @@
-﻿# Intel ME ROM image dumper/extractor
+#!/usr/bin/env python
+
+# Intel ME ROM image dumper/extractor
 # Copyright (c) 2012-2014 Igor Skochinsky
 # Version 0.1 2012-10-10
 # Version 0.2 2013-08-15
