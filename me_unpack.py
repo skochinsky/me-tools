@@ -293,10 +293,18 @@ def extract_code_mods(nm, f, soff):
 
 
 def decomp_lzma(compdata):
-    import subprocess, _subprocess
-    # hide the console window
-    si = subprocess.STARTUPINFO()
-    si.dwFlags |= _subprocess.STARTF_USESHOWWINDOW
+    if os.name == "posix":
+        import subprocess
+    elif os.name == "nt":
+        import subprocess, _subprocess
+    else:
+        import subprocess, _subprocess
+
+    if os.name == "nt":
+        # hide the console window
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= _subprocess.STARTF_USESHOWWINDOW
+
     if in_ida:
         basedir = idaapi.idadir("loaders")
     else:
