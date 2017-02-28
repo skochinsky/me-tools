@@ -293,6 +293,7 @@ def extract_code_mods(nm, f, soff):
 
 
 def decomp_lzma(compdata):
+
     if os.name == "posix":
         import subprocess
     elif os.name == "nt":
