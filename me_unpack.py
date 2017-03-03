@@ -300,7 +300,7 @@ def decomp_lzma(compdata):
     else:
         basedir = os.path.dirname(__file__)
     path = os.path.join(basedir, "lzma")
-    #print "using decompressor at '%s'" % path
+    print "using decompressor at '%s'" % path
     try:
         process = subprocess.Popen([path, "d", "-si", "-so"], startupinfo=si, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, errout = process.communicate(compdata)
@@ -537,6 +537,8 @@ class MeManifestHeader(ctypes.LittleEndianStructure):
                     nm = self.PartitionName
                 if ext!= "bin":
                    fname = "%s_mod.%s" % (nm, ext)
+                else:
+                   fname = nm
                 print " => %s" % (fname)
                 open(fname, "wb").write(data)
 
@@ -588,6 +590,8 @@ class CPDEntry(ctypes.LittleEndianStructure):
     def comptype(self):
         nm = self.Name.rstrip('\0')
         typ = self.Offset>>24
+        self.ModBase =0
+        self.CodeSize =0
         if nm[-4:-3]=='.': return COMP_TYPE_NOT_COMPRESSED
         if typ==2: return COMP_TYPE_HUFFMAN
         elif typ==0: return COMP_TYPE_LZMA
@@ -598,6 +602,7 @@ class CPDEntry(ctypes.LittleEndianStructure):
         print "Module name:    %s" % (nm)
         typ = self.Offset>>28
         print "Offset: %08X" % (self.Offset & 0xFFFFFF)
+        print "Compress flag: %08X" % ((self.Offset >>25) &1)
         print "Size: %08X" % (self.Size)
         print "comp type:%d" %self.comptype()
         print "Flags: %08X"% (self.Flags)
@@ -605,10 +610,13 @@ class CPDEntry(ctypes.LittleEndianStructure):
 
 class CPDHeader(ctypes.LittleEndianStructure):
     _fields_ = [
-        ("Tag",            char*4),   # 00 $CPD
-        ("NumModules",     uint32_t), # 04
-        ("Flags",          uint32_t), # 08
-        ("PartitionName",  char*4),    #0C
+        ("Tag",         char*4),   # 00 $CPD
+        ("NumModules",   uint32_t), # 04
+        ("HeaderVersion",uint8_t), # 08
+        ("EntryVersion", uint8_t), # 09
+        ("HeaderLength", uint8_t), # 0A
+        ("Checksum",     uint8_t), # 0B
+        ("PartitionName", char*4),    #0C
         # 10
     ]
 
@@ -818,7 +826,10 @@ class CPDHeader(ctypes.LittleEndianStructure):
     def pprint(self):
         print "Tag:                 %s" % (self.Tag)
         print "Number of modules:   %d" % (self.NumModules)
-        print "Flagson:             %08X" % (self.Flags)
+        print "Header Version:     %0X" % (self.HeaderVersion)
+        print "Entry Version:     %02X" % (self.EntryVersion)
+        print "Header Length:     %02X" % (self.HeaderLength)
+        print "Checksum:         %02X" % (self.Checksum)
         pname = self.PartitionName.rstrip('\0')
         if not pname:
             pname = "(none)"
@@ -984,6 +995,7 @@ def parse_descr(f, offset, extract):
     print "FRBA: 0x%08X" % frba
     print "FCBA: 0x%08X" % fcba
     me_offset = -1
+    if nr<2: nr=2 #assume ME region exists
     for i in range(nr+1):
         FLREG = struct.unpack("<I", f[offset + frba + i*4:offset + frba + i*4 + 4])[0]
         r = print_flreg(FLREG, region_names[i])
