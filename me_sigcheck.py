@@ -38,16 +38,27 @@ if __name__ == '__main__':
 
 f = open(sys.argv[1], "rb")
 hdr1 = f.read(0x80)
-if hdr1[0x1C:0x20]!= '$MN2':
+ver = 0
+if hdr1[0x1C:0x20]== '$MN2':
+  ver = 2
+elif hdr1[0x1C:0x20]== '$MAN':
+  ver = 1
+if not ver:
     print "ME manifest not found! (bad file format?)" 
     sys.exit(2)
 
-pubkey = bytes2int(f.read(0x100))
-pubexp = bytes2int(f.read(0x4))
+#hash in ROM is matched against pubkey+exponent
+spubkey = f.read(0x104)
+h = hashlib.sha256() if ver==2 else hashlib.sha1()
+h.update(spubkey)
+pkhash = bytes2int(h.digest())
+pubkey = bytes2int(spubkey[0:0x100])
+pubexp = bytes2int(spubkey[0x100:])
 rsasig = bytes2int(f.read(0x100))
 
 print "public key:", hex(pubkey)
 print "exponent:", hex(pubexp)
+print "pubkey+exp hash:", hex(pkhash) 
 print "signature", hex(rsasig)
 
 decsig = pow(rsasig, pubexp, pubkey)
@@ -64,7 +75,7 @@ mlen = struct.unpack("<I", hdr1[0x18:0x1C])[0] * 4
 f.seek(hlen)
 hdr2 = f.read(mlen-hlen)
 
-h = hashlib.sha256()
+h = hashlib.sha256() if ver==2 else hashlib.sha1()
 h.update(hdr1)
 h.update(hdr2)
 hashstr = hex(bytes2int(h.digest(), False))
