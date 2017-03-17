@@ -1474,6 +1474,8 @@ if __name__ == '__main__' and not in_ida:
         elif f[offset:offset+8] in ["\x02\x00\x00\x00\xA1\x00\x00\x00", "\x02\x00\x03\x00\xA1\x00\x00\x00"]:
             manif = get_struct(f, offset, AcManifestHeader)
             manif.pprint()
+        elif f[offset:offset+4] == "$CPD":
+            extract_code_mods("dump", f, offset)
         else:
             fpt = MeFptTable(f, offset)
             fpt.pprint()
